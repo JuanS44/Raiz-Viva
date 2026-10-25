@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raíz Viva · Arbolado urbano de Colombia</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--g:#1f7a4d;--g2:#0f4d33;--b:#0b5394;--au:#c9a227;--bg:#f4f8f5;--card:#fff;--tx:#12261c;--mu:#5a6c62;--bd:#dde7e0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Plus Jakarta Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:Fraunces,Georgia,serif;margin:0 0 8px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:linear-gradient(90deg,var(--g2),var(--b));color:#fff;border-bottom:3px solid var(--au)}
+header b{font:700 22px Fraunces,Georgia,serif;margin-right:auto}
+header nav{display:flex;gap:6px;flex-wrap:wrap}
+header button{border:0;border-radius:9px;padding:8px 13px;font:600 14px inherit;font-family:inherit;cursor:pointer;background:rgba(255,255,255,.16);color:#fff}
+header button.on{background:#fff;color:var(--g2)}
+#vMapa{display:grid;grid-template-columns:1fr 390px;height:calc(100dvh - 62px)}
+#mapw{position:relative}#map{position:absolute;inset:0}
+#panel{overflow:auto;padding:14px;background:var(--bg)}
+@media(max-width:820px){#vMapa{grid-template-columns:1fr;grid-template-rows:55dvh 1fr;height:auto}}
+.tb{position:absolute;z-index:500;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap}
+.btn{border:0;border-radius:10px;padding:10px 14px;font:700 14px inherit;font-family:inherit;cursor:pointer;background:var(--g);color:#fff}
+.btn.b{background:var(--b)}.btn.o{background:#fff;color:var(--g);border:1px solid var(--g)}.btn.r{background:#c0392b}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--au);outline-offset:2px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--bd);border-radius:9px;font:inherit;background:#fff;color:var(--tx)}
+label{display:block;font-size:12px;color:var(--mu);margin:8px 0 3px}
+.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--tx);margin:6px 0}.ck input{width:auto}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700;color:#fff}
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:10px 0}.dl span{display:block;font-size:12px;color:var(--mu)}
+.fotos{display:flex;gap:6px;overflow:auto;margin:8px 0}.fotos img{height:90px;border-radius:9px}
+.lst button{display:flex;width:100%;justify-content:space-between;gap:8px;border:0;border-bottom:1px solid var(--bd);background:none;padding:9px 2px;font:inherit;color:var(--tx);cursor:pointer;text-align:left}
+.gd{display:flex;align-items:center;gap:12px;border-top:2px solid var(--au);padding-top:10px;margin-top:10px}
+.dist{font:700 30px Fraunces,Georgia,serif;color:var(--b)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+section.v{padding:18px 16px;max-width:1000px;margin:auto}.hide{display:none!important}
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+table{width:100%;border-collapse:collapse}td,th{padding:7px 6px;border-bottom:1px solid var(--bd);text-align:left;font-size:14px}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:16px}
+.md{background:var(--card);border-radius:16px;padding:18px;width:100%;max-width:560px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--g2);color:#fff;padding:10px 16px;border-radius:10px;z-index:3000;display:none;max-width:90%}
+</style>
+</head>
+<body>
+<header><b>Raíz Viva</b><nav id="nav"></nav><button id="auth"></button></header>
+<main>
+<section id="vMapa"><div id="mapw"><div id="map"></div><div class="tb" id="tb"></div></div><div id="panel"></div></section>
+<section id="vUsr" class="v hide"></section>
+<section id="vRol" class="v hide"></section>
+</main>
+<div id="toast" role="status"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ===== CONFIGURACIÓN: pega aquí los datos de tu proyecto Supabase ===== */
+const SUPABASE_URL="https://TU-PROYECTO.supabase.co", SUPABASE_KEY="TU_CLAVE_ANON";
+/* Mapa satélite. Para uso comercial a gran escala, cambia esta URL por la de un proveedor con plan (MapTiler, Mapbox). */
+const SAT={url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Imágenes © Esri"};
+const PERMS={crear_arbol:"Registrar árboles",editar_arbol:"Editar árboles",eliminar_arbol:"Eliminar árboles",subir_fotos:"Subir fotografías",ver_informes:"Ver informes técnicos",crear_informe:"Redactar informes técnicos",gestionar_usuarios:"Crear y administrar usuarios",gestionar_roles:"Crear roles y asignar funciones"};
+const ES=["Excelente","Bueno","Regular","Crítico"],EC=["#1f9d55","#86b93c","#e3a519","#d64545"],RK=["Bajo","Medio","Alto"];
+const INF=[["estado_fuste","Estado del fuste"],["estado_copa","Estado de la copa"],["plagas","Plagas"],["enfermedades","Enfermedades"],["ramas_secas","Ramas secas"],["raices_expuestas","Raíces expuestas"],["interferencia_redes","Interferencia con redes"]];
+
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let prof=null,T=[],sel=null,me=null,gpsId=null,q="",markers={},meLay=null,line=null,view="mapa";
+const can=p=>!!(prof&&prof.activo&&prof.roles&&(prof.roles.es_global||prof.roles.permisos.includes(p)));
+function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",4000)}
+function modal(h){closeM();const o=document.createElement("div");o.className="ov";o.id="ov";o.innerHTML='<div class="md">'+h+'</div>';o.onclick=e=>{if(e.target===o)closeM()};document.body.appendChild(o)}
+function closeM(){const o=$("#ov");if(o)o.remove()}
+
+/* ===== MAPA ===== */
+const map=L.map("map",{zoomControl:false}).setView([1.2136,-77.2811],14);
+const sat=L.tileLayer(SAT.url,{maxZoom:19,attribution:SAT.attr}).addTo(map);
+const calles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
+L.control.layers({"Satélite":sat,"Calles":calles},null,{position:"topright"}).addTo(map);
+L.control.zoom({position:"bottomright"}).addTo(map);
+async function loadTrees(){const {data,error}=await sb.from("arboles").select("*").order("codigo");if(error){toast("No se pudo cargar el inventario: "+error.message);return}
+T=data;if(sel)sel=T.find(t=>t.id===sel.id)||null;drawMarkers();panel();if(T.length&&!loadTrees.f){map.fitBounds(T.map(t=>[t.latitud,t.longitud]),{padding:[40,40],maxZoom:17});loadTrees.f=1}}
+function drawMarkers(){Object.values(markers).forEach(m=>m.remove());markers={};
+T.filter(match).forEach(t=>{const i=Math.max(0,ES.indexOf(t.estado_general)),on=sel&&sel.id===t.id;
+markers[t.id]=L.circleMarker([t.latitud,t.longitud],{radius:on?12:9,fillColor:EC[i],color:on?"#c9a227":"#fff",weight:on?4:2,fillOpacity:.95}).addTo(map).bindTooltip(t.nombre_comun||t.codigo).on("click",()=>pick(t.id))})}
+const match=t=>((t.codigo||"")+(t.nombre_comun||"")).toLowerCase().includes(q.toLowerCase());
+function pick(id){sel=T.find(t=>t.id===id);drawMarkers();panel();if(sel)map.panTo([sel.latitud,sel.longitud]);if(line){line.remove();line=null}}
+
+/* ===== GPS ===== */
+function startGPS(center){if(!navigator.geolocation){toast("Este dispositivo no tiene GPS disponible.");return}
+if(gpsId!==null){if(me&&center)map.setView([me.lat,me.lng],18);return}
+toast("Buscando tu ubicación…");let first=center;
+gpsId=navigator.geolocation.watchPosition(p=>{me={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy};
+if(!meLay)meLay={c:L.circle([me.lat,me.lng],{radius:me.acc,color:"#0b5394",weight:1,fillOpacity:.1}).addTo(map),m:L.circleMarker([me.lat,me.lng],{radius:8,fillColor:"#0b5394",color:"#fff",weight:3,fillOpacity:1}).addTo(map)};
+meLay.c.setLatLng([me.lat,me.lng]).setRadius(me.acc);meLay.m.setLatLng([me.lat,me.lng]);
+if(first){map.setView([me.lat,me.lng],18);first=false}guide()},
+()=>{gpsId=null;toast("No se pudo obtener tu ubicación. Activa el permiso de ubicación del navegador (se requiere HTTPS).")},
+{enableHighAccuracy:true,maximumAge:1000,timeout:20000})}
+function brg(a,b){const r=x=>x*Math.PI/180,y=Math.sin(r(b[1]-a[1]))*Math.cos(r(b[0])),x=Math.cos(r(a[0]))*Math.sin(r(b[0]))-Math.sin(r(a[0]))*Math.cos(r(b[0]))*Math.cos(r(b[1]-a[1]));return(Math.atan2(y,x)*180/Math.PI+360)%360}
+function guide(){const g=$("#gd");if(!g||!sel||!me)return;const a=[me.lat,me.lng],t=[sel.latitud,sel.longitud],d=map.distance(a,t),b=brg(a,t),N=["norte","noreste","este","sureste","sur","suroeste","oeste","noroeste"][Math.round(b/45)%8];
+g.innerHTML='<div class="gd"><svg width="58" height="58" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#dde7e0" stroke-width="2"/><g transform="rotate('+b+' 32 32)"><path d="M32 8l11 30-11-6-11 6z" fill="#c9a227"/></g></svg><div><div class="dist">'+(d<1000?Math.round(d)+" m":(d/1000).toFixed(1)+" km")+'</div><small>'+(d<8?"Has llegado al árbol":"Camina hacia el "+N+" · precisión "+Math.round(me.acc)+" m")+'</small></div></div>';
+if(line)line.setLatLngs([a,t])}
+function guiar(){startGPS(false);if(line)line.remove();line=L.polyline([],{color:"#c9a227",weight:4,dashArray:"8 8"}).addTo(map);if(me){guide();map.fitBounds([[me.lat,me.lng],[sel.latitud,sel.longitud]],{padding:[60,60]})}else toast("Activando GPS… la guía aparecerá al obtener tu ubicación.")}
+
+/* ===== PANEL ===== */
+function panel(){const p=$("#panel");
+$("#tb").innerHTML='<button class="btn" id="bme">Mi ubicación</button>'+(can("crear_arbol")?'<button class="btn b" id="bnew">+ Árbol</button>':"");
+$("#bme").onclick=()=>startGPS(true);if($("#bnew"))$("#bnew").onclick=()=>treeForm(null);
+if(!sel){p.innerHTML='<h2>Arbolado</h2><input id="q" type="search" placeholder="Buscar por código o nombre" value="'+esc(q)+'"><div class="lst card" style="margin-top:10px">'+(T.filter(match).map(t=>'<button data-i="'+t.id+'"><span><b>'+esc(t.nombre_comun||"Sin nombre")+'</b> <small>'+esc(t.codigo)+'</small></span><span class="badge" style="background:'+EC[Math.max(0,ES.indexOf(t.estado_general))]+'">'+esc(t.estado_general)+'</span></button>').join("")||"<p>Aún no hay árboles registrados.</p>")+'</div>';
+$("#q").oninput=e=>{q=e.target.value;const c=e.target.selectionStart;panel();drawMarkers();const n=$("#q");n.focus();n.setSelectionRange(c,c)};
+p.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>pick(+b.dataset.i));return}
+const t=sel,i=Math.max(0,ES.indexOf(t.estado_general));
+p.innerHTML='<button class="btn o" id="back">← Volver al listado</button><div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2>'+esc(t.nombre_comun||"Sin nombre")+'</h2><i>'+esc(t.nombre_cientifico||"")+'</i></div><span class="badge" style="background:'+EC[i]+';height:fit-content">'+esc(t.estado_general)+'</span></div>'
++((t.fotos||[]).length?'<div class="fotos">'+t.fotos.map(u=>'<img src="'+esc(u)+'" alt="Foto del árbol" loading="lazy">').join("")+'</div>':"")
++'<div class="dl"><div><span>Código</span><b>'+esc(t.codigo)+'</b></div><div><span>Origen</span><b>'+esc(t.origen)+'</b></div><div><span>DAP</span><b>'+(t.dap??"—")+' cm</b></div><div><span>Altura</span><b>'+(t.altura_total??"—")+' m</b></div><div><span>Riesgo volcamiento</span><b>'+esc(t.riesgo_volcamiento)+'</b></div><div><span>Riesgo caída de ramas</span><b>'+esc(t.riesgo_caida_ramas)+'</b></div><div><span>Manejo</span><b>'+esc(t.manejo_propuesto||"—")+'</b></div><div><span>Prioridad</span><b>'+esc(t.priorizacion)+'</b></div><div><span>Ubicación</span><b>'+esc([t.direccion,t.barrio].filter(Boolean).join(", ")||"—")+'</b></div></div>'
++'<div id="gd"></div><div class="acts"><button class="btn" id="bg">Guiarme hasta aquí</button><button class="btn o" id="bgm">Cómo llegar</button>'
++(can("ver_informes")||can("crear_informe")?'<button class="btn b" id="bin">Informe técnico</button>':"")+(can("editar_arbol")?'<button class="btn o" id="bed">Editar</button>':"")+(can("eliminar_arbol")?'<button class="btn r" id="bde">Eliminar</button>':"")+'</div></div>';
+$("#back").onclick=()=>{sel=null;if(line){line.remove();line=null}drawMarkers();panel()};$("#bg").onclick=guiar;
+$("#bgm").onclick=()=>window.open("https://www.google.com/maps/dir/?api=1&destination="+t.latitud+","+t.longitud+"&travelmode=walking","_blank");
+if($("#bin"))$("#bin").onclick=informe;if($("#bed"))$("#bed").onclick=()=>treeForm(t);
+if($("#bde"))$("#bde").onclick=async()=>{if(!confirm("¿Eliminar el árbol "+t.codigo+"? No se puede deshacer."))return;const {error}=await sb.from("arboles").delete().eq("id",t.id);if(error)return toast(error.message);sel=null;toast("Árbol eliminado");loadTrees()};
+guide()}
+
+/* ===== FORMULARIOS ===== */
+const fl=(n,l,v,ty)=>'<div><label for="f_'+n+'">'+l+'</label><input id="f_'+n+'" name="'+n+'" type="'+(ty||"text")+'" '+(ty==="number"?'step="any" ':"")+'value="'+esc(v)+'"></div>';
+const sl=(n,l,o,v)=>'<div><label for="f_'+n+'">'+l+'</label><select id="f_'+n+'" name="'+n+'">'+o.map(x=>'<option'+(x===v?" selected":"")+'>'+x+'</option>').join("")+'</select></div>';
+function treeForm(t){const v=t||{};
+modal('<h2>'+(t?"Editar árbol":"Registrar árbol")+'</h2><form id="ft"><div class="g2">'+fl("codigo","Código *",v.codigo)+sl("origen","Origen",["Nativo","Introducido","Endémico"],v.origen)+fl("nombre_comun","Nombre común",v.nombre_comun)+fl("nombre_cientifico","Nombre científico",v.nombre_cientifico)+fl("familia","Familia",v.familia)+fl("dap","DAP (cm)",v.dap,"number")+fl("altura_total","Altura total (m)",v.altura_total,"number")+sl("estado_general","Estado general",ES,v.estado_general)+sl("riesgo_volcamiento","Riesgo de volcamiento",RK,v.riesgo_volcamiento)+sl("riesgo_caida_ramas","Riesgo caída de ramas",RK,v.riesgo_caida_ramas)+fl("manejo_propuesto","Manejo propuesto",v.manejo_propuesto)+sl("priorizacion","Prioridad",["Baja","Media","Alta"],v.priorizacion)+fl("direccion","Dirección",v.direccion)+fl("barrio","Barrio",v.barrio)+fl("comuna","Comuna",v.comuna)+'<div></div>'+fl("latitud","Latitud *",v.latitud,"number")+fl("longitud","Longitud *",v.longitud,"number")+'</div>'
++'<div class="acts"><button type="button" class="btn o" id="ugps">Usar mi GPS</button><button type="button" class="btn o" id="ucen">Usar centro del mapa</button></div>'
++(can("subir_fotos")?'<label for="f_fotos">Fotografías (puedes tomar o elegir varias)</label><input id="f_fotos" name="fotos" type="file" accept="image/*" multiple>':"")
++'<div class="acts"><button class="btn" type="submit">Guardar</button><button type="button" class="btn o" id="cx">Cancelar</button></div></form>');
+const f=$("#ft");$("#cx").onclick=closeM;
+$("#ugps").onclick=()=>{if(!me){startGPS(false);return toast("Activando GPS, vuelve a pulsar en unos segundos.")}f.latitud.value=me.lat.toFixed(7);f.longitud.value=me.lng.toFixed(7)};
+$("#ucen").onclick=()=>{const c=map.getCenter();f.latitud.value=c.lat.toFixed(7);f.longitud.value=c.lng.toFixed(7)};
+f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f),o={};
+["codigo","nombre_comun","nombre_cientifico","familia","origen","direccion","barrio","comuna","estado_general","riesgo_volcamiento","riesgo_caida_ramas","manejo_propuesto","priorizacion"].forEach(k=>o[k]=(d.get(k)||"").trim()||null);
+["dap","altura_total","latitud","longitud"].forEach(k=>o[k]=d.get(k)===""?null:+d.get(k));
+if(!o.codigo||o.latitud==null||o.longitud==null)return toast("El código, la latitud y la longitud son obligatorios.");
+o.responsable=prof.nombre||prof.email;let urls=[...(v.fotos||[])];
+const files=f.elements.fotos?[...f.elements.fotos.files]:[];
+for(const [i,x] of files.entries()){const p=o.codigo+"/"+Date.now()+"-"+i+"."+(x.name.split(".").pop()||"jpg");const {error}=await sb.storage.from("fotos").upload(p,x);if(error)return toast("No se pudo subir la foto: "+error.message);urls.push(sb.storage.from("fotos").getPublicUrl(p).data.publicUrl)}
+o.fotos=urls;const {error}=await sb.from("arboles").upsert(o,{onConflict:"codigo"});if(error)return toast("No se pudo guardar: "+error.message);
+closeM();toast("Árbol guardado");await loadTrees()}}
+
+async function informe(){const t=sel;let h='<h2>Informe técnico · '+esc(t.codigo)+'</h2>';
+if(can("ver_informes")){const {data}=await sb.from("informes").select("*").eq("arbol_id",t.id).order("fecha",{ascending:false}).limit(5);
+h+=(data&&data.length?data.map(r=>'<div class="card"><b>'+r.fecha+'</b><br>'+INF.map(([k,l])=>r[k]?'<small>'+l+':</small> '+esc(r[k])+'<br>':"").join("")+(r.observaciones?'<small>Observaciones:</small> '+esc(r.observaciones)+'<br>':"")+(r.recomendacion?'<small>Recomendación:</small> '+esc(r.recomendacion):"")+'</div>').join(""):"<p>Este árbol aún no tiene informes.</p>")}
+if(can("crear_informe"))h+='<h3>Nuevo informe</h3><form id="fi">'+INF.map(([k,l])=>'<label for="i_'+k+'">'+l+'</label><input id="i_'+k+'" name="'+k+'">').join("")+'<label for="i_o">Observaciones</label><textarea id="i_o" name="observaciones" rows="3"></textarea><label for="i_r">Recomendación</label><textarea id="i_r" name="recomendacion" rows="2"></textarea><div class="acts"><button class="btn" type="submit">Guardar informe</button><button type="button" class="btn o" id="cx">Cerrar</button></div></form>';
+else h+='<div class="acts"><button class="btn o" id="cx">Cerrar</button></div>';
+modal(h);$("#cx").onclick=closeM;const f=$("#fi");
+if(f)f.onsubmit=async e=>{e.preventDefault();const o={arbol_id:t.id,autor:prof.id};new FormData(f).forEach((v,k)=>o[k]=v.trim()||null);const {error}=await sb.from("informes").insert(o);if(error)return toast(error.message);closeM();toast("Informe guardado")}}
+
+/* ===== USUARIOS Y ROLES (solo con permiso) ===== */
+async function viewUsr(){const [{data:us},{data:rs}]=await Promise.all([sb.from("perfiles").select("*").order("email"),sb.from("roles").select("*").order("id")]);
+const op=(r,s)=>rs.map(x=>'<option value="'+x.id+'"'+(x.id===s?" selected":"")+'>'+esc(x.nombre)+'</option>').join("");
+$("#vUsr").innerHTML='<h2>Usuarios</h2><div class="card"><h3>Crear usuario</h3><form id="fu"><div class="g2"><div><label for="u1">Nombre</label><input id="u1" name="nombre" required></div><div><label for="u2">Correo</label><input id="u2" name="email" type="email" required></div><div><label for="u3">Contraseña temporal</label><input id="u3" name="pw" type="text" minlength="6" required></div><div><label for="u4">Rol</label><select id="u4" name="rol">'+op(rs,0)+'</select></div></div><div class="acts"><button class="btn" type="submit">Crear usuario</button></div></form></div><div class="card" style="overflow:auto"><table><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Activo</th></tr>'+us.map(u=>'<tr><td>'+esc(u.nombre||"—")+'</td><td>'+esc(u.email)+'</td><td><select data-u="'+u.id+'" data-k="rol_id"><option value="">Sin rol</option>'+op(rs,u.rol_id)+'</select></td><td><input type="checkbox" data-u="'+u.id+'" data-k="activo" '+(u.activo?"checked":"")+' style="width:auto"></td></tr>').join("")+'</table></div>';
+$("#fu").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const {data,error}=await tmp.auth.signUp({email:d.get("email"),password:d.get("pw"),options:{data:{nombre:d.get("nombre")}}});
+if(error||!data.user)return toast(error?error.message:"No se pudo crear el usuario.");
+const r=await sb.from("perfiles").update({rol_id:+d.get("rol"),activo:true,nombre:d.get("nombre")}).eq("id",data.user.id);
+if(r.error)return toast(r.error.message);toast("Usuario creado y activado");viewUsr()};
+$("#vUsr").onchange=async e=>{const el=e.target;if(!el.dataset.u)return;const v=el.dataset.k==="activo"?el.checked:(el.value?+el.value:null);
+const {error}=await sb.from("perfiles").update({[el.dataset.k]:v}).eq("id",el.dataset.u);toast(error?error.message:"Cambio guardado")}}
+async function viewRol(){const {data:rs}=await sb.from("roles").select("*").order("id");
+$("#vRol").innerHTML='<h2>Roles y funciones</h2><p>Marca qué funciones puede hacer cada rol. El rol Global siempre tiene todas.</p><div class="roles">'+rs.map(r=>'<div class="card" data-r="'+r.id+'"><h3>'+esc(r.nombre)+'</h3>'+Object.entries(PERMS).map(([k,l])=>'<label class="ck"><input type="checkbox" value="'+k+'" '+(r.es_global||r.permisos.includes(k)?"checked":"")+(r.es_global?" disabled":"")+'>'+l+'</label>').join("")+(r.es_global?"":'<div class="acts"><button class="btn" data-save="'+r.id+'">Guardar</button></div>')+'</div>').join("")+'</div><div class="card"><h3>Nuevo rol</h3><input id="nr" placeholder="Nombre del rol (ej. Supervisor)"><div class="acts"><button class="btn b" id="addr">Crear rol</button></div></div>';
+$("#vRol").onclick=async e=>{const s=e.target.dataset.save;if(s){const ps=[...e.target.closest(".card").querySelectorAll("input:checked")].map(i=>i.value);const {error}=await sb.from("roles").update({permisos:ps}).eq("id",s);toast(error?error.message:"Funciones guardadas")}
+if(e.target.id==="addr"){const n=$("#nr").value.trim();if(!n)return;const {error}=await sb.from("roles").insert({nombre:n,permisos:[]});if(error)return toast(error.message);viewRol()}}}
+
+/* ===== SESIÓN Y NAVEGACIÓN ===== */
+function nav(){const it=[["mapa","Mapa"]];if(can("gestionar_usuarios"))it.push(["usuarios","Usuarios"]);if(can("gestionar_roles"))it.push(["roles","Roles"]);
+$("#nav").innerHTML=it.map(([k,l])=>'<button data-v="'+k+'" class="'+(view===k?"on":"")+'">'+l+'</button>').join("");
+$("#nav").onclick=e=>{if(e.target.dataset.v)go(e.target.dataset.v)};
+$("#auth").textContent=prof?"Salir · "+(prof.nombre||prof.email)+(prof.roles?" ("+prof.roles.nombre+")":""):"Ingresar";
+$("#auth").onclick=prof?()=>sb.auth.signOut():login}
+function go(v){view=v;$("#vMapa").classList.toggle("hide",v!=="mapa");$("#vUsr").classList.toggle("hide",v!=="usuarios");$("#vRol").classList.toggle("hide",v!=="roles");
+if(v==="mapa")setTimeout(()=>map.invalidateSize(),50);if(v==="usuarios")viewUsr();if(v==="roles")viewRol();nav()}
+function login(){modal('<h2>Ingresar</h2><form id="fl"><label for="l1">Correo</label><input id="l1" name="email" type="email" required><label for="l2">Contraseña</label><input id="l2" name="pw" type="password" required><div class="acts"><button class="btn" type="submit">Entrar</button><button type="button" class="btn o" id="cx">Cancelar</button></div></form>');
+$("#cx").onclick=closeM;$("#fl").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),{error}=await sb.auth.signInWithPassword({email:d.get("email"),password:d.get("pw")});if(error)return toast("Correo o contraseña incorrectos.");closeM()}}
+async function loadProf(s){prof=null;if(s&&s.user){const {data}=await sb.from("perfiles").select("*,roles(*)").eq("id",s.user.id).single();prof=data;if(data&&!data.activo)toast("Tu cuenta aún no está activada. Pide a un administrador que la active.")}
+if(view!=="mapa"&&!(prof&&can(view==="usuarios"?"gestionar_usuarios":"gestionar_roles")))view="mapa";go(view);panel()}
+sb.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>loadProf(s),0)});
+loadTrees();nav();
+</script>
+</body>
+</html>

@@ -57,10 +57,12 @@ table{width:100%;border-collapse:collapse}td,th{padding:7px 6px;border-bottom:1p
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 /* ===== CONFIGURACIÓN: pega aquí los datos de tu proyecto Supabase ===== */
 const SUPABASE_URL="https://longchzjshpxldxrkpoy.supabase.co", SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvbmdjaHpqc2hweGxkeHJrcG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5NjY3MzMsImV4cCI6MjEwODU0MjczM30.oN40gCsWSGRDRTD8h4ZpC9c7g34pc6o4eTB4mlXIeiE";
 /* Mapa satélite. Para uso comercial a gran escala, cambia esta URL por la de un proveedor con plan (MapTiler, Mapbox). */
+const URL_PUBLICA=""; /* Dirección DEFINITIVA de la página, ej. "https://raizviva.co/". Defínela ANTES de imprimir códigos QR. Si queda vacía usa la dirección actual. */
 const SAT={url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Imágenes © Esri"};
 const PERMS={crear_arbol:"Registrar árboles",editar_arbol:"Editar árboles",eliminar_arbol:"Eliminar árboles",subir_fotos:"Subir fotografías",ver_informes:"Ver informes técnicos",crear_informe:"Redactar informes técnicos",gestionar_usuarios:"Crear y administrar usuarios",gestionar_roles:"Crear roles y asignar funciones",carga_masiva:"Carga masiva y exportación a Excel",gestionar_campos:"Administrar campos del formulario"};
 const ES=["Excelente","Bueno","Regular","Crítico"],EC=["#1f9d55","#86b93c","#e3a519","#d64545"],RK=["Bajo","Medio","Alto"];
@@ -81,7 +83,8 @@ const calles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZo
 L.control.layers({"Satélite":sat,"Calles":calles},null,{position:"topright"}).addTo(map);
 L.control.zoom({position:"bottomright"}).addTo(map);
 async function loadTrees(){const {data,error}=await sb.from("arboles").select("*").order("codigo");if(error){toast("No se pudo cargar el inventario: "+error.message);return}
-T=data;if(sel)sel=T.find(t=>t.id===sel.id)||null;drawMarkers();panel();if(T.length&&!loadTrees.f){map.fitBounds(T.map(t=>[t.latitud,t.longitud]),{padding:[40,40],maxZoom:17});loadTrees.f=1}}
+T=data;if(sel)sel=T.find(t=>t.id===sel.id)||null;drawMarkers();panel();if(T.length&&!loadTrees.f){map.fitBounds(T.map(t=>[t.latitud,t.longitud]),{padding:[40,40],maxZoom:17});loadTrees.f=1}
+if(!loadTrees.d){loadTrees.d=1;const c=new URLSearchParams(location.search).get("arbol"),t=c&&T.find(x=>x.codigo===c);if(t){pick(t.id);map.setView([t.latitud,t.longitud],19);setTimeout(()=>$("#panel").scrollIntoView({behavior:"smooth"}),300)}}}
 function drawMarkers(){Object.values(markers).forEach(m=>m.remove());markers={};
 T.filter(match).forEach(t=>{const i=Math.max(0,ES.indexOf(t.estado_general)),on=sel&&sel.id===t.id;
 markers[t.id]=L.circleMarker([t.latitud,t.longitud],{radius:on?12:9,fillColor:EC[i],color:on?"#c9a227":"#fff",weight:on?4:2,fillOpacity:.95}).addTo(map).bindTooltip((t.nombre_comun||t.codigo)+(t.responsable?" · "+t.responsable:"")).on("click",()=>pick(t.id))})}
@@ -116,10 +119,10 @@ p.innerHTML='<button class="btn o" id="back">← Volver al listado</button><div 
 +((t.fotos||[]).length?'<div class="fotos">'+t.fotos.map(u=>'<img src="'+esc(u)+'" alt="Foto del árbol" loading="lazy">').join("")+'</div>':"")
 +'<div class="dl"><div><span>Código</span><b>'+esc(t.codigo)+'</b></div><div><span>Origen</span><b>'+esc(t.origen)+'</b></div><div><span>DAP</span><b>'+(t.dap??"—")+' cm</b></div><div><span>Altura</span><b>'+(t.altura_total??"—")+' m</b></div><div><span>Riesgo volcamiento</span><b>'+esc(t.riesgo_volcamiento)+'</b></div><div><span>Riesgo caída de ramas</span><b>'+esc(t.riesgo_caida_ramas)+'</b></div><div><span>Manejo</span><b>'+esc(t.manejo_propuesto||"—")+'</b></div><div><span>Prioridad</span><b>'+esc(t.priorizacion)+'</b></div><div><span>Ubicación</span><b>'+esc([t.direccion,t.barrio].filter(Boolean).join(", ")||"—")+'</b></div><div><span>Registrado por</span><b>'+esc(t.responsable||"—")+'</b></div><div><span>Fecha de inventario</span><b>'+esc(t.fecha_inventario||"—")+'</b></div>'+(t.actualizado_por?'<div><span>Última edición</span><b>'+esc(t.actualizado_por)+'</b></div>':"")+Object.entries(t.datos_extra||{}).filter(([k,x])=>x!==""&&x!=null).map(([k,x])=>'<div><span>'+esc(k)+'</span><b>'+esc(x)+'</b></div>').join("")+'</div>'
 +'<div id="gd"></div><div class="acts"><button class="btn" id="bg">Guiarme hasta aquí</button><button class="btn o" id="bgm">Cómo llegar</button>'
-+(can("ver_informes")||can("crear_informe")?'<button class="btn b" id="bin">Informe técnico</button>':"")+(can("editar_arbol")?'<button class="btn o" id="bed">Editar</button>':"")+(can("eliminar_arbol")?'<button class="btn r" id="bde">Eliminar</button>':"")+'</div></div>';
++(can("ver_informes")||can("crear_informe")?'<button class="btn b" id="bin">Informe técnico</button>':"")+(can("editar_arbol")?'<button class="btn o" id="bed">Editar</button>':"")+(can("crear_arbol")||can("editar_arbol")?'<button class="btn o" id="bqr">Código QR</button>':"")+(can("eliminar_arbol")?'<button class="btn r" id="bde">Eliminar</button>':"")+'</div></div>';
 $("#back").onclick=()=>{sel=null;if(line){line.remove();line=null}drawMarkers();panel()};$("#bg").onclick=guiar;
 $("#bgm").onclick=()=>window.open("https://www.google.com/maps/dir/?api=1&destination="+t.latitud+","+t.longitud+"&travelmode=walking","_blank");
-if($("#bin"))$("#bin").onclick=informe;if($("#bed"))$("#bed").onclick=()=>treeForm(t);
+if($("#bin"))$("#bin").onclick=informe;if($("#bed"))$("#bed").onclick=()=>treeForm(t);if($("#bqr"))$("#bqr").onclick=()=>qrModal(t);
 if($("#bde"))$("#bde").onclick=async()=>{if(!confirm("¿Eliminar el árbol "+t.codigo+"? No se puede deshacer."))return;const {error}=await sb.from("arboles").delete().eq("id",t.id);if(error)return toast(error.message);sel=null;toast("Árbol eliminado");loadTrees()};
 guide()}
 
@@ -188,9 +191,9 @@ $("#vCam").onchange=async e=>{if(!e.target.dataset.c)return;const {error}=await 
 $("#vCam").onclick=async e=>{const id=e.target.dataset.del;if(!id||!confirm("¿Quitar este campo? Los datos ya guardados en los árboles se conservan."))return;const {error}=await sb.from("campos_extra").delete().eq("id",id);toast(error?error.message:"Campo quitado");viewCam()}}
 async function viewCar(){await loadCampos();
 const base=["codigo","nombre_comun","nombre_cientifico","familia","origen","latitud","longitud","direccion","barrio","comuna","dap","altura_total","estado_general","riesgo_volcamiento","riesgo_caida_ramas","manejo_propuesto","priorizacion"],ex=CAMPOS.filter(c=>c.activo).map(c=>c.etiqueta),num=["latitud","longitud","dap","altura_total"];
-$("#vCar").innerHTML='<h2>Carga masiva y exportación</h2><div class="card"><h3>1. Descarga la plantilla</h3><p>Llénala en Excel. Solo son obligatorios codigo, latitud y longitud. Los códigos que ya existen se actualizan. Las fotos se suben desde la ficha de cada árbol.</p><button class="btn b" id="tpl">Descargar plantilla (.xlsx)</button></div><div class="card"><h3>2. Sube el archivo</h3><input type="file" id="xf" accept=".xlsx,.xls,.csv"><div class="acts"><button class="btn" id="imp">Importar árboles</button></div><div id="rep" style="margin-top:8px"></div></div><div class="card"><h3>Exportar inventario</h3><p>Incluye quién registró cada árbol.</p><button class="btn o" id="exp">Descargar todo en Excel</button></div>';
+$("#vCar").innerHTML='<h2>Carga masiva y exportación</h2><div class="card"><h3>1. Descarga la plantilla</h3><p>Llénala en Excel. Solo son obligatorios codigo, latitud y longitud. Los códigos que ya existen se actualizan. Las fotos se suben desde la ficha de cada árbol.</p><button class="btn b" id="tpl">Descargar plantilla (.xlsx)</button></div><div class="card"><h3>2. Sube el archivo</h3><input type="file" id="xf" accept=".xlsx,.xls,.csv"><div class="acts"><button class="btn" id="imp">Importar árboles</button></div><div id="rep" style="margin-top:8px"></div></div><div class="card"><h3>Etiquetas QR</h3><p>Genera una hoja con el código QR de todos los árboles para imprimirla. Antes de imprimir, confirma que la dirección de la página sea la definitiva.</p><button class="btn b" id="etq">Imprimir etiquetas QR</button></div><div class="card"><h3>Exportar inventario</h3><p>Incluye quién registró cada árbol.</p><button class="btn o" id="exp">Descargar todo en Excel</button></div>';
 const save=(rows,name,hdr)=>{const ws=hdr?XLSX.utils.aoa_to_sheet([hdr]):XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Arboles");XLSX.writeFile(wb,name)};
-$("#tpl").onclick=()=>save(null,"plantilla_raiz_viva.xlsx",[...base,...ex]);
+$("#etq").onclick=etiquetas;$("#tpl").onclick=()=>save(null,"plantilla_raiz_viva.xlsx",[...base,...ex]);
 $("#exp").onclick=()=>{const cols=[...base,"responsable","fecha_inventario","actualizado_por","fecha_actualizacion"];save(T.map(t=>({...Object.fromEntries(cols.map(c=>[c,t[c]])),...t.datos_extra})),"inventario_raiz_viva.xlsx")};
 $("#imp").onclick=async()=>{const f=$("#xf").files[0];if(!f)return toast("Elige primero un archivo.");
 const wb=XLSX.read(await f.arrayBuffer()),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
@@ -204,6 +207,18 @@ if(!old)o.responsable=nm;(old?viejos:nuevos)[o.codigo]=o});
 let ok=0;const bad=[];
 for(const g of [Object.values(nuevos),Object.values(viejos)])for(let i=0;i<g.length;i+=200){const part=g.slice(i,i+200),{error}=await sb.from("arboles").upsert(part,{onConflict:"codigo"});if(error)bad.push(error.message);else ok+=part.length}
 $("#rep").innerHTML="<b>"+ok+" árboles importados.</b>"+(errs.length?"<br>Se omitieron "+errs.length+" filas:<br>"+errs.slice(0,15).map(esc).join("<br>"):"")+(bad.length?"<br>Errores: "+esc(bad.join(" | ")):"");await loadTrees()}}
+
+/* ===== CÓDIGOS QR ===== */
+const linkArbol=t=>(URL_PUBLICA||location.origin+location.pathname)+"?arbol="+encodeURIComponent(t.codigo);
+function qrCanvas(t){const q=qrcode(0,"M");q.addData(linkArbol(t));q.make();const n=q.getModuleCount(),s=14,m=3*s,w=n*s+2*m,c=document.createElement("canvas");c.width=w;c.height=w+90;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.fillStyle="#0f4d33";
+for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))x.fillRect(m+k*s,m+r*s,s,s);
+x.fillStyle="#12261c";x.textAlign="center";x.font="700 34px sans-serif";x.fillText(t.codigo,w/2,w+10);x.font="24px sans-serif";x.fillText((t.nombre_comun||"")+" · Raíz Viva",w/2,w+50);return c}
+function qrModal(t){modal('<h2>Código QR · '+esc(t.codigo)+'</h2><div id="qc" style="text-align:center"></div><p style="word-break:break-all;font-size:13px">'+esc(linkArbol(t))+'</p><div class="acts"><button class="btn" id="qd">Descargar PNG</button><button class="btn o" id="qk">Copiar enlace</button><button class="btn o" id="cx">Cerrar</button></div>');
+const c=qrCanvas(t);c.style.maxWidth="100%";c.style.height="auto";$("#qc").appendChild(c);$("#cx").onclick=closeM;
+$("#qd").onclick=()=>{const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download="QR_"+t.codigo+".png";a.click()};
+$("#qk").onclick=()=>navigator.clipboard.writeText(linkArbol(t)).then(()=>toast("Enlace copiado"))}
+function etiquetas(){if(!T.length)return toast("No hay árboles registrados.");const w=window.open("","_blank");if(!w)return toast("Permite las ventanas emergentes para imprimir.");
+w.document.write('<title>Etiquetas QR</title><style>body{font-family:sans-serif;margin:10px}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.e{border:1px dashed #999;padding:6px;break-inside:avoid}img{width:100%;display:block}</style><div class="g">'+T.map(t=>'<div class="e"><img src="'+qrCanvas(t).toDataURL("image/png")+'"></div>').join("")+'</div>');w.document.close();setTimeout(()=>w.print(),600)}
 
 /* ===== SESIÓN Y NAVEGACIÓN ===== */
 function nav(){const it=[["mapa","Mapa"]];if(can("gestionar_usuarios"))it.push(["usuarios","Usuarios"]);if(can("gestionar_roles"))it.push(["roles","Roles"]);if(can("gestionar_campos"))it.push(["campos","Campos"]);if(can("carga_masiva"))it.push(["carga","Carga masiva"]);

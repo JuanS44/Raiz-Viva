@@ -50,22 +50,25 @@ table{width:100%;border-collapse:collapse}td,th{padding:7px 6px;border-bottom:1p
 <section id="vMapa"><div id="mapw"><div id="map"></div><div class="tb" id="tb"></div></div><div id="panel"></div></section>
 <section id="vUsr" class="v hide"></section>
 <section id="vRol" class="v hide"></section>
+<section id="vCam" class="v hide"></section>
+<section id="vCar" class="v hide"></section>
 </main>
 <div id="toast" role="status"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ===== CONFIGURACIÓN: pega aquí los datos de tu proyecto Supabase ===== */
 const SUPABASE_URL="https://longchzjshpxldxrkpoy.supabase.co", SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvbmdjaHpqc2hweGxkeHJrcG95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5NjY3MzMsImV4cCI6MjEwODU0MjczM30.oN40gCsWSGRDRTD8h4ZpC9c7g34pc6o4eTB4mlXIeiE";
 /* Mapa satélite. Para uso comercial a gran escala, cambia esta URL por la de un proveedor con plan (MapTiler, Mapbox). */
 const SAT={url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"Imágenes © Esri"};
-const PERMS={crear_arbol:"Registrar árboles",editar_arbol:"Editar árboles",eliminar_arbol:"Eliminar árboles",subir_fotos:"Subir fotografías",ver_informes:"Ver informes técnicos",crear_informe:"Redactar informes técnicos",gestionar_usuarios:"Crear y administrar usuarios",gestionar_roles:"Crear roles y asignar funciones"};
+const PERMS={crear_arbol:"Registrar árboles",editar_arbol:"Editar árboles",eliminar_arbol:"Eliminar árboles",subir_fotos:"Subir fotografías",ver_informes:"Ver informes técnicos",crear_informe:"Redactar informes técnicos",gestionar_usuarios:"Crear y administrar usuarios",gestionar_roles:"Crear roles y asignar funciones",carga_masiva:"Carga masiva y exportación a Excel",gestionar_campos:"Administrar campos del formulario"};
 const ES=["Excelente","Bueno","Regular","Crítico"],EC=["#1f9d55","#86b93c","#e3a519","#d64545"],RK=["Bajo","Medio","Alto"];
 const INF=[["estado_fuste","Estado del fuste"],["estado_copa","Estado de la copa"],["plagas","Plagas"],["enfermedades","Enfermedades"],["ramas_secas","Ramas secas"],["raices_expuestas","Raíces expuestas"],["interferencia_redes","Interferencia con redes"]];
 
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let prof=null,T=[],sel=null,me=null,gpsId=null,q="",markers={},meLay=null,line=null,view="mapa";
+let CAMPOS=[],UL=[],RL=[],prof=null,T=[],sel=null,me=null,gpsId=null,q="",markers={},meLay=null,line=null,view="mapa";
 const can=p=>!!(prof&&prof.activo&&prof.roles&&(prof.roles.es_global||prof.roles.permisos.includes(p)));
 function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",4000)}
 function modal(h){closeM();const o=document.createElement("div");o.className="ov";o.id="ov";o.innerHTML='<div class="md">'+h+'</div>';o.onclick=e=>{if(e.target===o)closeM()};document.body.appendChild(o)}
@@ -81,7 +84,7 @@ async function loadTrees(){const {data,error}=await sb.from("arboles").select("*
 T=data;if(sel)sel=T.find(t=>t.id===sel.id)||null;drawMarkers();panel();if(T.length&&!loadTrees.f){map.fitBounds(T.map(t=>[t.latitud,t.longitud]),{padding:[40,40],maxZoom:17});loadTrees.f=1}}
 function drawMarkers(){Object.values(markers).forEach(m=>m.remove());markers={};
 T.filter(match).forEach(t=>{const i=Math.max(0,ES.indexOf(t.estado_general)),on=sel&&sel.id===t.id;
-markers[t.id]=L.circleMarker([t.latitud,t.longitud],{radius:on?12:9,fillColor:EC[i],color:on?"#c9a227":"#fff",weight:on?4:2,fillOpacity:.95}).addTo(map).bindTooltip(t.nombre_comun||t.codigo).on("click",()=>pick(t.id))})}
+markers[t.id]=L.circleMarker([t.latitud,t.longitud],{radius:on?12:9,fillColor:EC[i],color:on?"#c9a227":"#fff",weight:on?4:2,fillOpacity:.95}).addTo(map).bindTooltip((t.nombre_comun||t.codigo)+(t.responsable?" · "+t.responsable:"")).on("click",()=>pick(t.id))})}
 const match=t=>((t.codigo||"")+(t.nombre_comun||"")).toLowerCase().includes(q.toLowerCase());
 function pick(id){sel=T.find(t=>t.id===id);drawMarkers();panel();if(sel)map.panTo([sel.latitud,sel.longitud]);if(line){line.remove();line=null}}
 
@@ -105,13 +108,13 @@ function guiar(){startGPS(false);if(line)line.remove();line=L.polyline([],{color
 function panel(){const p=$("#panel");
 $("#tb").innerHTML='<button class="btn" id="bme">Mi ubicación</button>'+(can("crear_arbol")?'<button class="btn b" id="bnew">+ Árbol</button>':"");
 $("#bme").onclick=()=>startGPS(true);if($("#bnew"))$("#bnew").onclick=()=>treeForm(null);
-if(!sel){p.innerHTML='<h2>Arbolado</h2><input id="q" type="search" placeholder="Buscar por código o nombre" value="'+esc(q)+'"><div class="lst card" style="margin-top:10px">'+(T.filter(match).map(t=>'<button data-i="'+t.id+'"><span><b>'+esc(t.nombre_comun||"Sin nombre")+'</b> <small>'+esc(t.codigo)+'</small></span><span class="badge" style="background:'+EC[Math.max(0,ES.indexOf(t.estado_general))]+'">'+esc(t.estado_general)+'</span></button>').join("")||"<p>Aún no hay árboles registrados.</p>")+'</div>';
+if(!sel){p.innerHTML='<h2>Arbolado</h2><input id="q" type="search" placeholder="Buscar por código o nombre" value="'+esc(q)+'"><div class="lst card" style="margin-top:10px">'+(T.filter(match).map(t=>'<button data-i="'+t.id+'"><span><b>'+esc(t.nombre_comun||"Sin nombre")+'</b> <small>'+esc(t.codigo)+(t.responsable?' · '+esc(t.responsable):'')+'</small></span><span class="badge" style="background:'+EC[Math.max(0,ES.indexOf(t.estado_general))]+'">'+esc(t.estado_general)+'</span></button>').join("")||"<p>Aún no hay árboles registrados.</p>")+'</div>';
 $("#q").oninput=e=>{q=e.target.value;const c=e.target.selectionStart;panel();drawMarkers();const n=$("#q");n.focus();n.setSelectionRange(c,c)};
 p.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>pick(+b.dataset.i));return}
 const t=sel,i=Math.max(0,ES.indexOf(t.estado_general));
 p.innerHTML='<button class="btn o" id="back">← Volver al listado</button><div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2>'+esc(t.nombre_comun||"Sin nombre")+'</h2><i>'+esc(t.nombre_cientifico||"")+'</i></div><span class="badge" style="background:'+EC[i]+';height:fit-content">'+esc(t.estado_general)+'</span></div>'
 +((t.fotos||[]).length?'<div class="fotos">'+t.fotos.map(u=>'<img src="'+esc(u)+'" alt="Foto del árbol" loading="lazy">').join("")+'</div>':"")
-+'<div class="dl"><div><span>Código</span><b>'+esc(t.codigo)+'</b></div><div><span>Origen</span><b>'+esc(t.origen)+'</b></div><div><span>DAP</span><b>'+(t.dap??"—")+' cm</b></div><div><span>Altura</span><b>'+(t.altura_total??"—")+' m</b></div><div><span>Riesgo volcamiento</span><b>'+esc(t.riesgo_volcamiento)+'</b></div><div><span>Riesgo caída de ramas</span><b>'+esc(t.riesgo_caida_ramas)+'</b></div><div><span>Manejo</span><b>'+esc(t.manejo_propuesto||"—")+'</b></div><div><span>Prioridad</span><b>'+esc(t.priorizacion)+'</b></div><div><span>Ubicación</span><b>'+esc([t.direccion,t.barrio].filter(Boolean).join(", ")||"—")+'</b></div></div>'
++'<div class="dl"><div><span>Código</span><b>'+esc(t.codigo)+'</b></div><div><span>Origen</span><b>'+esc(t.origen)+'</b></div><div><span>DAP</span><b>'+(t.dap??"—")+' cm</b></div><div><span>Altura</span><b>'+(t.altura_total??"—")+' m</b></div><div><span>Riesgo volcamiento</span><b>'+esc(t.riesgo_volcamiento)+'</b></div><div><span>Riesgo caída de ramas</span><b>'+esc(t.riesgo_caida_ramas)+'</b></div><div><span>Manejo</span><b>'+esc(t.manejo_propuesto||"—")+'</b></div><div><span>Prioridad</span><b>'+esc(t.priorizacion)+'</b></div><div><span>Ubicación</span><b>'+esc([t.direccion,t.barrio].filter(Boolean).join(", ")||"—")+'</b></div><div><span>Registrado por</span><b>'+esc(t.responsable||"—")+'</b></div><div><span>Fecha de inventario</span><b>'+esc(t.fecha_inventario||"—")+'</b></div>'+(t.actualizado_por?'<div><span>Última edición</span><b>'+esc(t.actualizado_por)+'</b></div>':"")+Object.entries(t.datos_extra||{}).filter(([k,x])=>x!==""&&x!=null).map(([k,x])=>'<div><span>'+esc(k)+'</span><b>'+esc(x)+'</b></div>').join("")+'</div>'
 +'<div id="gd"></div><div class="acts"><button class="btn" id="bg">Guiarme hasta aquí</button><button class="btn o" id="bgm">Cómo llegar</button>'
 +(can("ver_informes")||can("crear_informe")?'<button class="btn b" id="bin">Informe técnico</button>':"")+(can("editar_arbol")?'<button class="btn o" id="bed">Editar</button>':"")+(can("eliminar_arbol")?'<button class="btn r" id="bde">Eliminar</button>':"")+'</div></div>';
 $("#back").onclick=()=>{sel=null;if(line){line.remove();line=null}drawMarkers();panel()};$("#bg").onclick=guiar;
@@ -124,7 +127,7 @@ guide()}
 const fl=(n,l,v,ty)=>'<div><label for="f_'+n+'">'+l+'</label><input id="f_'+n+'" name="'+n+'" type="'+(ty||"text")+'" '+(ty==="number"?'step="any" ':"")+'value="'+esc(v)+'"></div>';
 const sl=(n,l,o,v)=>'<div><label for="f_'+n+'">'+l+'</label><select id="f_'+n+'" name="'+n+'">'+o.map(x=>'<option'+(x===v?" selected":"")+'>'+x+'</option>').join("")+'</select></div>';
 function treeForm(t){const v=t||{};
-modal('<h2>'+(t?"Editar árbol":"Registrar árbol")+'</h2><form id="ft"><div class="g2">'+fl("codigo","Código *",v.codigo)+sl("origen","Origen",["Nativo","Introducido","Endémico"],v.origen)+fl("nombre_comun","Nombre común",v.nombre_comun)+fl("nombre_cientifico","Nombre científico",v.nombre_cientifico)+fl("familia","Familia",v.familia)+fl("dap","DAP (cm)",v.dap,"number")+fl("altura_total","Altura total (m)",v.altura_total,"number")+sl("estado_general","Estado general",ES,v.estado_general)+sl("riesgo_volcamiento","Riesgo de volcamiento",RK,v.riesgo_volcamiento)+sl("riesgo_caida_ramas","Riesgo caída de ramas",RK,v.riesgo_caida_ramas)+fl("manejo_propuesto","Manejo propuesto",v.manejo_propuesto)+sl("priorizacion","Prioridad",["Baja","Media","Alta"],v.priorizacion)+fl("direccion","Dirección",v.direccion)+fl("barrio","Barrio",v.barrio)+fl("comuna","Comuna",v.comuna)+'<div></div>'+fl("latitud","Latitud *",v.latitud,"number")+fl("longitud","Longitud *",v.longitud,"number")+'</div>'
+modal('<h2>'+(t?"Editar árbol":"Registrar árbol")+'</h2><form id="ft"><div class="g2">'+fl("codigo","Código *",v.codigo)+sl("origen","Origen",["Nativo","Introducido","Endémico"],v.origen)+fl("nombre_comun","Nombre común",v.nombre_comun)+fl("nombre_cientifico","Nombre científico",v.nombre_cientifico)+fl("familia","Familia",v.familia)+fl("dap","DAP (cm)",v.dap,"number")+fl("altura_total","Altura total (m)",v.altura_total,"number")+sl("estado_general","Estado general",ES,v.estado_general)+sl("riesgo_volcamiento","Riesgo de volcamiento",RK,v.riesgo_volcamiento)+sl("riesgo_caida_ramas","Riesgo caída de ramas",RK,v.riesgo_caida_ramas)+fl("manejo_propuesto","Manejo propuesto",v.manejo_propuesto)+sl("priorizacion","Prioridad",["Baja","Media","Alta"],v.priorizacion)+fl("direccion","Dirección",v.direccion)+fl("barrio","Barrio",v.barrio)+fl("comuna","Comuna",v.comuna)+'<div></div>'+fl("latitud","Latitud *",v.latitud,"number")+fl("longitud","Longitud *",v.longitud,"number")+CAMPOS.filter(c=>c.activo).map(c=>xf(c,(v.datos_extra||{})[c.etiqueta])).join("")+'</div>'
 +'<div class="acts"><button type="button" class="btn o" id="ugps">Usar mi GPS</button><button type="button" class="btn o" id="ucen">Usar centro del mapa</button></div>'
 +(can("subir_fotos")?'<label for="f_fotos">Fotografías (puedes tomar o elegir varias)</label><input id="f_fotos" name="fotos" type="file" accept="image/*" multiple>':"")
 +'<div class="acts"><button class="btn" type="submit">Guardar</button><button type="button" class="btn o" id="cx">Cancelar</button></div></form>');
@@ -135,7 +138,7 @@ f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f),o={};
 ["codigo","nombre_comun","nombre_cientifico","familia","origen","direccion","barrio","comuna","estado_general","riesgo_volcamiento","riesgo_caida_ramas","manejo_propuesto","priorizacion"].forEach(k=>o[k]=(d.get(k)||"").trim()||null);
 ["dap","altura_total","latitud","longitud"].forEach(k=>o[k]=d.get(k)===""?null:+d.get(k));
 if(!o.codigo||o.latitud==null||o.longitud==null)return toast("El código, la latitud y la longitud son obligatorios.");
-o.responsable=prof.nombre||prof.email;let urls=[...(v.fotos||[])];
+const nm=prof.nombre||prof.email;if(!t||o.codigo!==t.codigo)o.responsable=nm;o.actualizado_por=nm;o.fecha_actualizacion=new Date().toISOString();o.datos_extra={...(v.datos_extra||{})};CAMPOS.filter(c=>c.activo).forEach(c=>{const x=d.get("x_"+c.id);if(x!=null)o.datos_extra[c.etiqueta]=x});let urls=[...(v.fotos||[])];
 const files=f.elements.fotos?[...f.elements.fotos.files]:[];
 for(const [i,x] of files.entries()){const p=o.codigo+"/"+Date.now()+"-"+i+"."+(x.name.split(".").pop()||"jpg");const {error}=await sb.storage.from("fotos").upload(p,x);if(error)return toast("No se pudo subir la foto: "+error.message);urls.push(sb.storage.from("fotos").getPublicUrl(p).data.publicUrl)}
 o.fotos=urls;const {error}=await sb.from("arboles").upsert(o,{onConflict:"codigo"});if(error)return toast("No se pudo guardar: "+error.message);
@@ -151,32 +154,69 @@ if(f)f.onsubmit=async e=>{e.preventDefault();const o={arbol_id:t.id,autor:prof.i
 
 /* ===== USUARIOS Y ROLES (solo con permiso) ===== */
 async function viewUsr(){const [{data:us},{data:rs}]=await Promise.all([sb.from("perfiles").select("*").order("email"),sb.from("roles").select("*").order("id")]);
-const op=(r,s)=>rs.map(x=>'<option value="'+x.id+'"'+(x.id===s?" selected":"")+'>'+esc(x.nombre)+'</option>').join("");
-$("#vUsr").innerHTML='<h2>Usuarios</h2><div class="card"><h3>Crear usuario</h3><form id="fu"><div class="g2"><div><label for="u1">Nombre</label><input id="u1" name="nombre" required></div><div><label for="u2">Correo</label><input id="u2" name="email" type="email" required></div><div><label for="u3">Contraseña temporal</label><input id="u3" name="pw" type="text" minlength="6" required></div><div><label for="u4">Rol</label><select id="u4" name="rol">'+op(rs,0)+'</select></div></div><div class="acts"><button class="btn" type="submit">Crear usuario</button></div></form></div><div class="card" style="overflow:auto"><table><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Activo</th></tr>'+us.map(u=>'<tr><td>'+esc(u.nombre||"—")+'</td><td>'+esc(u.email)+'</td><td><select data-u="'+u.id+'" data-k="rol_id"><option value="">Sin rol</option>'+op(rs,u.rol_id)+'</select></td><td><input type="checkbox" data-u="'+u.id+'" data-k="activo" '+(u.activo?"checked":"")+' style="width:auto"></td></tr>').join("")+'</table></div>';
+UL=us;RL=rs;const op=(r,s)=>rs.map(x=>'<option value="'+x.id+'"'+(x.id===s?" selected":"")+'>'+esc(x.nombre)+'</option>').join("");
+$("#vUsr").innerHTML='<h2>Usuarios</h2><div class="card"><h3>Crear usuario</h3><form id="fu"><div class="g2"><div><label for="u1">Nombre</label><input id="u1" name="nombre" required></div><div><label for="u2">Correo</label><input id="u2" name="email" type="email" required></div><div><label for="u3">Contraseña temporal</label><input id="u3" name="pw" type="text" minlength="6" required></div><div><label for="u4">Rol</label><select id="u4" name="rol">'+op(rs,0)+'</select></div></div><div class="acts"><button class="btn" type="submit">Crear usuario</button></div></form></div><div class="card" style="overflow:auto"><table><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Activo</th><th></th></tr>'+us.map(u=>'<tr><td>'+esc(u.nombre||"—")+'</td><td>'+esc(u.email)+'</td><td><select data-u="'+u.id+'" data-k="rol_id"><option value="">Sin rol</option>'+op(rs,u.rol_id)+'</select></td><td><input type="checkbox" data-u="'+u.id+'" data-k="activo" '+(u.activo?"checked":"")+' style="width:auto"></td><td><button class="btn o" data-edit="'+u.id+'">Editar</button></td></tr>').join("")+'</table></div>';
 $("#fu").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),tmp=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
 const {data,error}=await tmp.auth.signUp({email:d.get("email"),password:d.get("pw"),options:{data:{nombre:d.get("nombre")}}});
 if(error||!data.user)return toast(error?error.message:"No se pudo crear el usuario.");
 const r=await sb.from("perfiles").update({rol_id:+d.get("rol"),activo:true,nombre:d.get("nombre")}).eq("id",data.user.id);
 if(r.error)return toast(r.error.message);toast("Usuario creado y activado");viewUsr()};
+$("#vUsr").onclick=e=>{const id=e.target.dataset.edit;if(id)editUser(id)};
 $("#vUsr").onchange=async e=>{const el=e.target;if(!el.dataset.u)return;const v=el.dataset.k==="activo"?el.checked:(el.value?+el.value:null);
 const {error}=await sb.from("perfiles").update({[el.dataset.k]:v}).eq("id",el.dataset.u);toast(error?error.message:"Cambio guardado")}}
+function editUser(id){const u=UL.find(x=>x.id===id);if(!u)return;
+modal('<h2>Editar usuario</h2><form id="fe"><label for="e1">Nombre</label><input id="e1" name="nombre" value="'+esc(u.nombre)+'"><label for="e2">Correo</label><input id="e2" name="email" type="email" value="'+esc(u.email)+'" required><label for="e3">Nueva contraseña (déjala vacía para no cambiarla)</label><input id="e3" name="pw" type="text" minlength="6" autocomplete="off"><label for="e4">Rol</label><select id="e4" name="rol">'+RL.map(r=>'<option value="'+r.id+'"'+(r.id===u.rol_id?" selected":"")+'>'+esc(r.nombre)+'</option>').join("")+'</select><label class="ck"><input type="checkbox" name="activo" '+(u.activo?"checked":"")+'> Usuario activo</label><div class="acts"><button class="btn" type="submit">Guardar cambios</button><button type="button" class="btn o" id="cx">Cancelar</button></div></form>');
+$("#cx").onclick=closeM;
+$("#fe").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),mail=d.get("email").trim(),pw=d.get("pw").trim();
+if(id===prof.id&&d.get("activo")!=="on")return toast("No puedes desactivar tu propio usuario.");
+let r=await sb.from("perfiles").update({nombre:d.get("nombre").trim()||null,rol_id:+d.get("rol"),activo:d.get("activo")==="on"}).eq("id",id);
+if(r.error)return toast(r.error.message);
+if(pw||mail!==u.email){r=await sb.rpc("admin_actualizar_usuario",{uid:id,nuevo_correo:mail!==u.email?mail:null,nueva_clave:pw||null});if(r.error)return toast("Se guardó el nombre y el rol, pero no el correo o la contraseña: "+r.error.message)}
+closeM();toast("Usuario actualizado");viewUsr()}}
 async function viewRol(){const {data:rs}=await sb.from("roles").select("*").order("id");
 $("#vRol").innerHTML='<h2>Roles y funciones</h2><p>Marca qué funciones puede hacer cada rol. El rol Global siempre tiene todas.</p><div class="roles">'+rs.map(r=>'<div class="card" data-r="'+r.id+'"><h3>'+esc(r.nombre)+'</h3>'+Object.entries(PERMS).map(([k,l])=>'<label class="ck"><input type="checkbox" value="'+k+'" '+(r.es_global||r.permisos.includes(k)?"checked":"")+(r.es_global?" disabled":"")+'>'+l+'</label>').join("")+(r.es_global?"":'<div class="acts"><button class="btn" data-save="'+r.id+'">Guardar</button></div>')+'</div>').join("")+'</div><div class="card"><h3>Nuevo rol</h3><input id="nr" placeholder="Nombre del rol (ej. Supervisor)"><div class="acts"><button class="btn b" id="addr">Crear rol</button></div></div>';
 $("#vRol").onclick=async e=>{const s=e.target.dataset.save;if(s){const ps=[...e.target.closest(".card").querySelectorAll("input:checked")].map(i=>i.value);const {error}=await sb.from("roles").update({permisos:ps}).eq("id",s);toast(error?error.message:"Funciones guardadas")}
 if(e.target.id==="addr"){const n=$("#nr").value.trim();if(!n)return;const {error}=await sb.from("roles").insert({nombre:n,permisos:[]});if(error)return toast(error.message);viewRol()}}}
 
+/* ===== CAMPOS PERSONALIZADOS, CARGA MASIVA ===== */
+async function loadCampos(){const {data}=await sb.from("campos_extra").select("*").order("orden").order("id");CAMPOS=data||[]}
+const xf=(c,val)=>{const n="x_"+c.id,l=esc(c.etiqueta);if(c.tipo==="lista")return '<div><label for="'+n+'">'+l+'</label><select id="'+n+'" name="'+n+'"><option value=""></option>'+(c.opciones||[]).map(o=>'<option'+(o===val?" selected":"")+'>'+esc(o)+'</option>').join("")+'</select></div>';return fl(n,l,val,c.tipo==="numero"?"number":c.tipo==="fecha"?"date":"text")};
+async function viewCam(){await loadCampos();
+$("#vCam").innerHTML='<h2>Campos del formulario</h2><p>Crea variables nuevas y marca las que quieras ver en el formulario del árbol. Si desactivas un campo, los datos ya guardados se conservan.</p><div class="card"><h3>Nuevo campo</h3><form id="fc"><div class="g2"><div><label for="c1">Nombre del campo</label><input id="c1" name="etiqueta" required></div><div><label for="c2">Tipo</label><select id="c2" name="tipo"><option value="texto">Texto</option><option value="numero">Número</option><option value="fecha">Fecha</option><option value="lista">Lista de opciones</option></select></div></div><label for="c3">Opciones (solo para lista, separadas por coma)</label><input id="c3" name="opciones"><div class="acts"><button class="btn" type="submit">Agregar campo</button></div></form></div><div class="card"><h3>Campos creados</h3>'+(CAMPOS.length?CAMPOS.map(c=>'<div class="ck" style="justify-content:space-between"><label class="ck" style="margin:0"><input type="checkbox" data-c="'+c.id+'" '+(c.activo?"checked":"")+'> <b>'+esc(c.etiqueta)+'</b> <small>('+c.tipo+')</small></label><button class="btn r" data-del="'+c.id+'">Quitar</button></div>').join(""):"<p>Aún no hay campos creados.</p>")+'</div>';
+$("#fc").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),op=d.get("opciones").split(",").map(x=>x.trim()).filter(Boolean);const {error}=await sb.from("campos_extra").insert({etiqueta:d.get("etiqueta").trim(),tipo:d.get("tipo"),opciones:op.length?op:null,activo:true});toast(error?error.message:"Campo agregado y activado");viewCam()};
+$("#vCam").onchange=async e=>{if(!e.target.dataset.c)return;const {error}=await sb.from("campos_extra").update({activo:e.target.checked}).eq("id",e.target.dataset.c);toast(error?error.message:"Guardado");loadCampos()};
+$("#vCam").onclick=async e=>{const id=e.target.dataset.del;if(!id||!confirm("¿Quitar este campo? Los datos ya guardados en los árboles se conservan."))return;const {error}=await sb.from("campos_extra").delete().eq("id",id);toast(error?error.message:"Campo quitado");viewCam()}}
+async function viewCar(){await loadCampos();
+const base=["codigo","nombre_comun","nombre_cientifico","familia","origen","latitud","longitud","direccion","barrio","comuna","dap","altura_total","estado_general","riesgo_volcamiento","riesgo_caida_ramas","manejo_propuesto","priorizacion"],ex=CAMPOS.filter(c=>c.activo).map(c=>c.etiqueta),num=["latitud","longitud","dap","altura_total"];
+$("#vCar").innerHTML='<h2>Carga masiva y exportación</h2><div class="card"><h3>1. Descarga la plantilla</h3><p>Llénala en Excel. Solo son obligatorios codigo, latitud y longitud. Los códigos que ya existen se actualizan. Las fotos se suben desde la ficha de cada árbol.</p><button class="btn b" id="tpl">Descargar plantilla (.xlsx)</button></div><div class="card"><h3>2. Sube el archivo</h3><input type="file" id="xf" accept=".xlsx,.xls,.csv"><div class="acts"><button class="btn" id="imp">Importar árboles</button></div><div id="rep" style="margin-top:8px"></div></div><div class="card"><h3>Exportar inventario</h3><p>Incluye quién registró cada árbol.</p><button class="btn o" id="exp">Descargar todo en Excel</button></div>';
+const save=(rows,name,hdr)=>{const ws=hdr?XLSX.utils.aoa_to_sheet([hdr]):XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Arboles");XLSX.writeFile(wb,name)};
+$("#tpl").onclick=()=>save(null,"plantilla_raiz_viva.xlsx",[...base,...ex]);
+$("#exp").onclick=()=>{const cols=[...base,"responsable","fecha_inventario","actualizado_por","fecha_actualizacion"];save(T.map(t=>({...Object.fromEntries(cols.map(c=>[c,t[c]])),...t.datos_extra})),"inventario_raiz_viva.xlsx")};
+$("#imp").onclick=async()=>{const f=$("#xf").files[0];if(!f)return toast("Elige primero un archivo.");
+const wb=XLSX.read(await f.arrayBuffer()),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+if(!rows.length)return toast("El archivo está vacío.");
+const errs=[],nuevos={},viejos={},nm=prof.nombre||prof.email;
+rows.forEach((r,i)=>{const o={},x={};
+Object.entries(r).forEach(([k,v])=>{k=k.trim();v=typeof v==="string"?v.trim():v;if(base.includes(k))o[k]=v===""?null:(num.includes(k)?+String(v).replace(",","."):v);else if(ex.includes(k)&&v!=="")x[k]=String(v)});
+if(!o.codigo||o.latitud==null||o.longitud==null||!(o.latitud>=-90&&o.latitud<=90)||!(o.longitud>=-180&&o.longitud<=180)){errs.push("Fila "+(i+2)+": falta el código o las coordenadas son inválidas");return}
+o.codigo=String(o.codigo);const old=T.find(t=>t.codigo===o.codigo);o.datos_extra={...(old?old.datos_extra:{}),...x};o.actualizado_por=nm;o.fecha_actualizacion=new Date().toISOString();
+if(!old)o.responsable=nm;(old?viejos:nuevos)[o.codigo]=o});
+let ok=0;const bad=[];
+for(const g of [Object.values(nuevos),Object.values(viejos)])for(let i=0;i<g.length;i+=200){const part=g.slice(i,i+200),{error}=await sb.from("arboles").upsert(part,{onConflict:"codigo"});if(error)bad.push(error.message);else ok+=part.length}
+$("#rep").innerHTML="<b>"+ok+" árboles importados.</b>"+(errs.length?"<br>Se omitieron "+errs.length+" filas:<br>"+errs.slice(0,15).map(esc).join("<br>"):"")+(bad.length?"<br>Errores: "+esc(bad.join(" | ")):"");await loadTrees()}}
+
 /* ===== SESIÓN Y NAVEGACIÓN ===== */
-function nav(){const it=[["mapa","Mapa"]];if(can("gestionar_usuarios"))it.push(["usuarios","Usuarios"]);if(can("gestionar_roles"))it.push(["roles","Roles"]);
+function nav(){const it=[["mapa","Mapa"]];if(can("gestionar_usuarios"))it.push(["usuarios","Usuarios"]);if(can("gestionar_roles"))it.push(["roles","Roles"]);if(can("gestionar_campos"))it.push(["campos","Campos"]);if(can("carga_masiva"))it.push(["carga","Carga masiva"]);
 $("#nav").innerHTML=it.map(([k,l])=>'<button data-v="'+k+'" class="'+(view===k?"on":"")+'">'+l+'</button>').join("");
 $("#nav").onclick=e=>{if(e.target.dataset.v)go(e.target.dataset.v)};
 $("#auth").textContent=prof?"Salir · "+(prof.nombre||prof.email)+(prof.roles?" ("+prof.roles.nombre+")":""):"Ingresar";
 $("#auth").onclick=prof?()=>sb.auth.signOut():login}
-function go(v){view=v;$("#vMapa").classList.toggle("hide",v!=="mapa");$("#vUsr").classList.toggle("hide",v!=="usuarios");$("#vRol").classList.toggle("hide",v!=="roles");
-if(v==="mapa")setTimeout(()=>map.invalidateSize(),50);if(v==="usuarios")viewUsr();if(v==="roles")viewRol();nav()}
+function go(v){view=v;$("#vMapa").classList.toggle("hide",v!=="mapa");$("#vUsr").classList.toggle("hide",v!=="usuarios");$("#vRol").classList.toggle("hide",v!=="roles");$("#vCam").classList.toggle("hide",v!=="campos");$("#vCar").classList.toggle("hide",v!=="carga");
+if(v==="mapa")setTimeout(()=>map.invalidateSize(),50);if(v==="usuarios")viewUsr();if(v==="roles")viewRol();if(v==="campos")viewCam();if(v==="carga")viewCar();nav()}
 function login(){modal('<h2>Ingresar</h2><form id="fl"><label for="l1">Correo</label><input id="l1" name="email" type="email" required><label for="l2">Contraseña</label><input id="l2" name="pw" type="password" required><div class="acts"><button class="btn" type="submit">Entrar</button><button type="button" class="btn o" id="cx">Cancelar</button></div></form>');
 $("#cx").onclick=closeM;$("#fl").onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target),{error}=await sb.auth.signInWithPassword({email:d.get("email"),password:d.get("pw")});if(error)return toast("Correo o contraseña incorrectos.");closeM()}}
 async function loadProf(s){prof=null;if(s&&s.user){const {data}=await sb.from("perfiles").select("*,roles(*)").eq("id",s.user.id).single();prof=data;if(data&&!data.activo)toast("Tu cuenta aún no está activada. Pide a un administrador que la active.")}
-if(view!=="mapa"&&!(prof&&can(view==="usuarios"?"gestionar_usuarios":"gestionar_roles")))view="mapa";go(view);panel()}
+const PV={usuarios:"gestionar_usuarios",roles:"gestionar_roles",campos:"gestionar_campos",carga:"carga_masiva"};if(view!=="mapa"&&!can(PV[view]))view="mapa";if(prof)await loadCampos();go(view);panel()}
 sb.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>loadProf(s),0)});
 loadTrees();nav();
 </script>
